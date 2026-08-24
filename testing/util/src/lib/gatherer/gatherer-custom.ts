@@ -168,7 +168,7 @@ export class CustomGatherer {
         throw new Error(`No Frontmatter found at ${file}`);
       }
 
-      const scripts = this.readScripts(parsed, directory);
+      const scripts = this.readScripts(parsed, directory, data);
 
       if (isIndex || scripts.length > 0) {
         return new Page(title, file, weight, isIndex, scripts);
@@ -178,7 +178,11 @@ export class CustomGatherer {
     return null;
   }
 
-  private readScripts(root: Root, directory: string): Array<Script> {
+  private readScripts(
+    root: Root,
+    directory: string,
+    source: string,
+  ): Array<Script> {
     const { children } = root;
     let data: Array<Script> = [];
     let i = -1;
@@ -236,7 +240,7 @@ export class CustomGatherer {
 
         if (add) {
           // Extract the code content from the directive's children
-          let codeContent = this.extractCodeFromDirective(child);
+          let codeContent = this.extractCodeFromDirective(child, source);
           
           if (codeContent.length > 0) {
             let command = this.extractCommand(codeContent, raw);
@@ -262,27 +266,51 @@ export class CustomGatherer {
     return data;
   }
 
-  private extractCodeFromDirective(directive: any): string {
-    let content = "";
-    
+  private extractCodeFromDirective(directive: any, source: string): string {
+    // Prefer slicing directly from the raw markdown source using the directive's
+    // position info. Reconstructing content from the AST is lossy: remark collapses
+    // blank lines into paragraph breaks and does not preserve leading whitespace,
+    // which breaks constructs like heredocs where an "EOF" terminator on its own
+    // line must remain on its own line.
+    const pos = directive.position;
+    if (pos && pos.start && pos.end) {
+      const lines = source.split("\n");
+      // pos.start.line is the line of the opening ":::code{...}" (1-indexed).
+      // pos.end.line is the line of the closing ":::" fence.
+      // Content is the lines strictly between them.
+      // 1-indexed lines [start.line + 1 .. end.line - 1] map to
+      // 0-indexed slice(start.line, end.line - 1).
+      const start = pos.start.line;
+      const end = pos.end.line - 1;
+      if (start >= 0 && end >= start) {
+        return lines.slice(start, end).join("\n");
+      }
+    }
+
+    // Fallback: reconstruct from the AST if position info is missing. Insert a
+    // blank line between block children so paragraph breaks in the source are
+    // approximated.
+    let parts: string[] = [];
+
     if (directive.children) {
       for (const child of directive.children) {
         if (child.type === "code") {
-          content += child.value || "";
+          parts.push(child.value || "");
         } else if (child.type === "paragraph" && child.children) {
-          // Extract text from paragraph children
+          let paragraph = "";
           for (const textChild of child.children) {
             if (textChild.type === "text") {
-              content += textChild.value || "";
+              paragraph += textChild.value || "";
             }
           }
+          parts.push(paragraph);
         } else if (child.type === "text") {
-          content += child.value || "";
+          parts.push(child.value || "");
         }
       }
     }
-    
-    return content;
+
+    return parts.join("\n\n");
   }
 
   extractCommand(rawString: string, raw: boolean): string {

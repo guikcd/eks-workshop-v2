@@ -229,6 +229,7 @@ export class CustomGatherer {
                 break;
               case "showCopyAction":
               case "showLineNumbers":
+              case "highlightLines":
               case "language":
                 // Display-only attributes used by the workshop renderer; ignored by the test runner.
                 break;

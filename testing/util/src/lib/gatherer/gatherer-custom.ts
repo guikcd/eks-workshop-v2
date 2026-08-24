@@ -228,7 +228,9 @@ export class CustomGatherer {
                 hookTimeout = parseInt(value as string);
                 break;
               case "showCopyAction":
-                // Used for filtering, already handled in condition
+              case "showLineNumbers":
+              case "language":
+                // Display-only attributes used by the workshop renderer; ignored by the test runner.
                 break;
               default:
                 console.log(
